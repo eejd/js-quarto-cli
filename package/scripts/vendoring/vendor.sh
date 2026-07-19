@@ -23,8 +23,21 @@ fi
 
 pushd "${QUARTO_SRC_PATH}"
 set +e
-for entrypoint in quarto.ts vendor_deps.ts ../tests/test-deps.ts ../package/scripts/deno_std/deno_std.ts; do
-  $DENO_BIN_PATH install --allow-all --no-config --entrypoint $entrypoint "--importmap=$QUARTO_SRC_PATH/import_map.json"
-done
+# QUARTO_VENDOR_LOCK lets packagers pin module resolution to a lockfile.
+# QUARTO_VENDOR_OFFLINE=1: packagers building from a pre-populated, checksummed
+# DENO_DIR (no network in the build sandbox) skip module-graph resolution
+# entirely. Cache completeness is enforced by the later bundle/render steps,
+# which fail on any module missing from the cache.
+DENO_INSTALL_EXTRA_ARGS=()
+if [ -n "$QUARTO_VENDOR_LOCK" ]; then
+  DENO_INSTALL_EXTRA_ARGS+=("--lock=$QUARTO_VENDOR_LOCK" "--frozen")
+fi
+if [ "$QUARTO_VENDOR_OFFLINE" = "1" ]; then
+  echo "QUARTO_VENDOR_OFFLINE=1: skipping deno cache; using the pre-populated cache"
+else
+  for entrypoint in quarto.ts vendor_deps.ts ../tests/test-deps.ts ../package/scripts/deno_std/deno_std.ts; do
+    $DENO_BIN_PATH cache --no-config $entrypoint "--importmap=$QUARTO_SRC_PATH/import_map.json" "${DENO_INSTALL_EXTRA_ARGS[@]}"
+  done
+fi
 set -e
 popd
